@@ -1,0 +1,16 @@
+================================================================================
+This README contains instructions on how to compile and execute my programs.
+================================================================================
+
+To compile and run the hashmap program, simple navigate into the hashmap directory
+and run make. Then run the hashmap executable
+(e.g. ./hashmap or ./hashmap 10000)
+
+The hashmap program can either take no arguments or one argument. If provided
+one argument, it will create a hashmap of that size. Otherwise, it will use
+the default size as defined in the header file.
+
+The main method in hashmap.cpp runs tests the hashmap's set, get, delete, and load
+functions, and also provides runtime performance. The test functions are included
+in hashmap.h/hashmap.cpp, and operate under the assumption that the hashmap
+contains string/string key/value pairs.
