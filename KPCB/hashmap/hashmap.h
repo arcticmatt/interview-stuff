@@ -6,11 +6,10 @@
 
 using namespace std;
 
-const int DEFAULT_SIZE = 100;
-const string CHARSET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-const int MAX_SWAPS = 30;
+const int DEFAULT_SIZE = 10000;
+const string CHARSET = "abcdefghijklmnopqrstuvwxyz";
 
-/* This is the node to be used in the linked list */
+/* Nodes hold key/value pairs */
 template<typename T>
 struct node
 {
@@ -18,9 +17,9 @@ struct node
     T value;
     node() {}
     node(string key, T value) : key(key), value(value) {}
-    node(node& other) : key(other.key), value(other.value) {}
 };
 
+/* The Hashmap class */
 template<typename T>
 class Hashmap
 {
@@ -28,24 +27,17 @@ class Hashmap
         Hashmap();
         Hashmap(unsigned long map_size);
         ~Hashmap();
-        unsigned long hash(bool first, string key);
+        unsigned long hash(string key);
+        unsigned long hash2(string key);
+        unsigned long get_index(string key);
         bool set(string key, T value);
-        bool insert_into_first(node<T> *nd, string orig_key);
-        bool insert_into_second(node<T> *nd, string orig_key);
-        bool should_break();
-        bool rebuild();
         T get(string key);
         T delete_value(string key);
         float load();
 
     private:
         node<T> **slot; /* An array of node pointers */
-        unsigned long first_hash_modifier;
-        unsigned long second_hash_modifier;
         unsigned long size;
-        int swap_count = 0;
-        node<T> *kicked_node;
-        void update_hash_modifiers();
 };
 
 void fill(Hashmap<string>& map, int num_items);

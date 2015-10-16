@@ -13,8 +13,15 @@ int main(int argc, const char* argv[]) {
         size = atoi(argv[1]);
     else
         size = DEFAULT_SIZE;
+
+    clock_t begin_time = clock();
+
     Hashmap<string> map(size);
-    fill(map, size / 5);
+    fill(map, size);
+    cout << "Hashmap load is " << map.load() << endl;
+
+    cout << "Fill time for " << size << " elements = " <<
+        float(clock() - begin_time) / CLOCKS_PER_SEC << " seconds" << endl;
 }
 
 /*** Test Functions ***/
@@ -23,7 +30,9 @@ int main(int argc, const char* argv[]) {
  */
 void fill(Hashmap<string>& map, int num_items) {
     for (int i = 0; i < num_items; i++) {
-        map.set(random_string(7), random_string(7));
+        string key = random_string(7);
+        string value = random_string(7);
+        map.set(key, value);
     }
 }
 
@@ -31,8 +40,7 @@ void fill(Hashmap<string>& map, int num_items) {
  * Generates a random string.
  */
 string random_string(int length) {
-    string rand_string;
-    rand_string.resize(length);
+    string rand_string(length, 'c');
 
     for (int i = 0; i < length; i++)
         rand_string[i] = CHARSET[rand() % CHARSET.length()];
@@ -50,8 +58,6 @@ template<typename T>
 Hashmap<T>::Hashmap(unsigned long map_size) {
     srand(time(NULL));
     size = map_size;
-    first_hash_modifier = rand() % (size * 2);
-    second_hash_modifier = rand() % (size * 3);
     cout << "Constructing HM w/size = " << size << endl;
     slot = new node<T>*[size];
     for (int i = 0; i < size; i++)
@@ -68,121 +74,79 @@ Hashmap<T>::~Hashmap() {
 
 /*** Hashmap Functions ***/
 /*
- * We are going to use Cuckoo hashing. So we need to have two different hash
- * functions. Which one we use is determined by the first parameter.
+ * This is the DJB Hash Algorithm.
  */
 template<typename T>
-unsigned long Hashmap<T>::hash(bool first, string key) {
-    unsigned long key_val = 0;
-    const char *s = key.c_str();
+unsigned long Hashmap<T>::hash(string key) {
+    unsigned long hash = 5381;
     int c;
+    const char *s = key.c_str();
 
     while ((c = *s++))
-        key_val += c;
+        hash = ((hash << 5) + hash) + c;
 
-    //cout << "key_val for key = " << key << " currently equals " << key_val <<
-        //endl;
-
-    if (first)
-        return (key_val + first_hash_modifier) % size;
-    else
-        return (key_val + second_hash_modifier) % size;
+    return hash % size;
 }
 
 /*
- * Rebuilds the hashmap using the nodes currently in it and the kicked node (the
- * node left out when breaking from the cuckoo insertion). Does so in-place.
+ * A simpler hash function, used for Double Hashing.
  */
 template<typename T>
-bool Hashmap<T>::rebuild() {
-    cout << "Rebuilding table" << endl;
-    for (int i = 0; i < size; i++) {
-        if (slot[i] != NULL) {
-            set(slot[i]->key, slot[i]->value);
-            //insert_into_first(slot[i], slot[i]->key);
+unsigned long Hashmap<T>::hash2(string key) {
+    unsigned long sum = 0;
+    int c;
+    const char *s = key.c_str();
+    while ((c = *s++))
+        sum += c;
+
+    return sum % size;
+}
+
+template<typename T>
+unsigned long Hashmap<T>::get_index(string key) {
+    unsigned long index = hash(key);
+    unsigned long num_steps = 0;
+    unsigned long incr = hash2(key);
+    bool same_key = false;
+    node<T> *curr_node = slot[index];
+    // Search for vacant space, or for space with passed-in key
+    while (curr_node != NULL) {
+        if (num_steps == size)
+            break;
+        if (key.compare(curr_node->key) == 0) {
+            same_key = true;
+            break;
         }
+        index = (index + incr) % size;
+        curr_node = slot[index];
+        num_steps++;
     }
-    set(kicked_node->key, kicked_node->value);
-    return true;
-    cout << "Table rebuilt" << endl;
+
+    if (curr_node != NULL && !same_key)
+        return -1;
+    else
+        return index;
 }
 
 /*
  * Stores the given key/value pair in the hashmap. Returns a boolean value
  * indicating success/failure of the operation.
  *
- * We use the Cuckoo hashing method to insert values into our hashmap. The basic
- * idea is that we use two hash functions instead of one. This gives each key
- * two possible locations in our hashmap. So every time we insert a node, we check
- * to see if there is a node already there. If not, we just insert. If there is,
- * we kick the other node out, and insert the kicked-out node into its other
- * position. And this goes on.
+ * We use linear probing to find the index at which to insert our value.
  *
- * If we swap elements more than some max amount of times, we just return
- * false (instead of rehashing).
+ * If there is no vacant space, we return false.
  */
 template<typename T>
 bool Hashmap<T>::set(string key, T value) {
-    swap_count = 0;
-    // If insert fails, rebuild table
-    if (!insert_into_first(new node<T>(key, value), key)) {
-        return rebuild();
-    }
-}
-
-/*
- * Inserts a key/value pair using the first hash function.
- */
-template<typename T>
-bool Hashmap<T>::insert_into_first(node<T> *nd, string orig_key) {
-    string key = nd->key;
-    T value = nd->value;
-    if (should_break()) {
-        kicked_node = new node<T>(key, value);
+    unsigned long index = get_index(key);
+    if (index == -1) {
         return false;
-    }
-    unsigned long index = hash(true, key);
-    node<T> *prevNode = slot[index];
-    // Insert new node
-    slot[index] = new node<T>(key, value);
-    // If we displaced a node with a different key, put it into its other position
-    if (prevNode != NULL && prevNode->key.compare(key) != 0) {
-        return insert_into_second(prevNode, orig_key);
+    } else if (slot[index] != NULL) { // Just change value
+        assert (key.compare(slot[index]->key) == 0);
+        slot[index]->value = value;
     } else {
-        return true;
+        slot[index] = new node<T>(key, value);
     }
-}
-
-/*
- * Inserts a key/value pair using the second hash function.
- */
-template<typename T>
-bool Hashmap<T>::insert_into_second(node<T> *nd, string orig_key) {
-    string key = nd->key;
-    T value = nd->value;
-    if (should_break()) {
-        kicked_node = new node<T>(key, value);
-        return false;
-    }
-    unsigned long index = hash(false, key);
-    node<T> *prevNode = slot[index];
-    // Insert new node
-    slot[index] = new node<T>(key, value);
-    // If we displaced a node with a different key, put it into its other position
-    if (prevNode != NULL && prevNode->key.compare(key) != 0)
-        return insert_into_first(prevNode, orig_key);
-    else
-        return true;
-}
-
-/*
- * If we have swapped elements more than some max number of times,
- * break out of the swapping loop.
- */
-template<typename T>
-bool Hashmap<T>::should_break() {
-    swap_count++;
-    return swap_count > MAX_SWAPS;
 }
 
 /*
@@ -190,19 +154,12 @@ bool Hashmap<T>::should_break() {
  */
 template<typename T>
 T Hashmap<T>::get(string key) {
-    // Check first location
-    unsigned long first_index = hash(true, key);
-    node<T> *first_node = slot[first_index];
-    if (first_node != NULL && key.compare(first_node->key) == 0)
-        return first_node->value;
+    unsigned long index = get_index(key);
+    if (index == -1)
+        return NULL;
+    else
+        return slot[index];
 
-    // Check second location
-    unsigned long second_index = hash(false, key);
-    node<T> *second_node = slot[second_index];
-    if (second_node != NULL && key.compare(second_node->key) == 0)
-        return second_node->value;
-
-    return NULL;
 }
 
 /*
@@ -211,29 +168,16 @@ T Hashmap<T>::get(string key) {
  */
 template<typename T>
 T Hashmap<T>::delete_value(string key) {
-    // Check first location
-    unsigned long first_index = hash(true, key);
-    node<T> *first_node = slot[first_index];
-    if (first_node != NULL && key.compare(first_node->key) == 0) {
-        // Delete node from array and from memory and return value
-        slot[first_index] = NULL;
-        T value = first_node->value;
-        delete(first_node);
+    unsigned long index = get_index(key);
+    if (index == -1) {
+        return NULL;
+    } else {
+        // Delete node from array and memory, and return value
+        T value = slot[index]->value;
+        delete(slot[index]);
+        slot[index] = NULL;
         return value;
     }
-
-    // Check second location
-    unsigned long second_index = hash(false, key);
-    node<T> *second_node = slot[second_index];
-    if (second_node != NULL && key.compare(second_node->key) == 0) {
-        // Delete node from array and from memory and return value
-        slot[second_index] = NULL;
-        T value = second_node->value;
-        delete(second_node);
-        return value;
-    }
-
-    return NULL;
 }
 
 /*
@@ -249,13 +193,4 @@ float Hashmap<T>::load() {
             num_items++;
     }
     return (float) num_items / size;
-}
-
-/*
- * Updates the modifiers to the hash functions. Used to rebuild the table.
- */
-template<typename T>
-void Hashmap<T>::update_hash_modifiers() {
-    first_hash_modifier = rand() % (size * 2);
-    second_hash_modifier = rand() % (size * 3);
 }

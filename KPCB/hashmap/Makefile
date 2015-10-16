@@ -1,5 +1,5 @@
 CC = g++
-FLAGS = -g -std=c++11
+FLAGS = -g -std=c++11 -O3
 
 SOURCES = *.h *.cpp
 
